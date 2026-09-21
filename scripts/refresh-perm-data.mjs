@@ -24,18 +24,22 @@ if (size && size > MAX_WORKBOOK_BYTES) throw new Error("The DOL workbook exceede
 
 const workbook = XLSX.read(Buffer.from(await workbookResponse.arrayBuffer()), {
   type: "buffer",
-  cellDates: true
+  cellDates: true,
+  dense: true
 });
 
-const records = workbook.SheetNames.flatMap((sheetName) =>
-  XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: true })
-    .map((row) => ({
-      decisionDate: toDate(column(row, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE"])),
-      status: String(column(row, ["CASE_STATUS", "STATUS", "FINAL_DECISION"]) || "").toUpperCase(),
-      employer: String(column(row, ["EMPLOYER_NAME", "EMPLOYER_BUSINESS_NAME"]) || "")
-    }))
-    .filter((record) => record.decisionDate)
-);
+console.log("Workbook diagnostics", JSON.stringify(workbook.SheetNames.map((sheetName) => {
+  const sheet = workbook.Sheets[sheetName];
+  return {
+    sheetName,
+    ref: sheet?.["!ref"],
+    isDense: Array.isArray(sheet),
+    keys: sheet ? Object.keys(sheet).slice(0, 12) : [],
+    firstRow: sheet ? Array.from({ length: 12 }, (_, columnIndex) => cellValue(sheet, 0, columnIndex) || null) : null
+  };
+})));
+
+const records = workbook.SheetNames.flatMap((sheetName) => readRecords(workbook.Sheets[sheetName]));
 
 if (!records.length) throw new Error("The DOL workbook did not have decision rows in the expected columns.");
 
@@ -64,12 +68,50 @@ function fiscalYear(url) {
   return Number(String(url).match(/FY(20\d{2})/i)?.[1] || 0);
 }
 
-function column(row, names) {
-  const normalized = Object.fromEntries(Object.entries(row).map(([key, value]) => [
-    key.toUpperCase().replace(/[^A-Z0-9]/g, "_"), value
-  ]));
-  return names.map((name) => normalized[name]).find((value) => value !== undefined && value !== "");
+function readRecords(sheet) {
+  if (!sheet) return [];
+  const range = sheet["!ref"] ? XLSX.utils.decode_range(sheet["!ref"]) : denseRange(sheet);
+  let headerRow = -1;
+  let columns = {};
+  const lastHeaderRow = Math.min(range.e.r, range.s.r + 20);
+  for (let rowIndex = range.s.r; rowIndex <= lastHeaderRow; rowIndex += 1) {
+    const candidate = {};
+    for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+      const header = normalizeHeader(cellValue(sheet, rowIndex, columnIndex));
+      if (header) candidate[header] = columnIndex;
+    }
+    if (firstColumn(candidate, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE", "DETERMINATION_DATE", "CASE_DETERMINATION_DATE", "FINAL_DECISION_DATE"]) !== undefined) {
+      headerRow = rowIndex;
+      columns = candidate;
+      break;
+    }
+  }
+  if (headerRow < 0) return [];
+  const decisionColumn = firstColumn(columns, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE", "DETERMINATION_DATE", "CASE_DETERMINATION_DATE", "FINAL_DECISION_DATE"]);
+  const statusColumn = firstColumn(columns, ["CASE_STATUS", "STATUS", "FINAL_DECISION"]);
+  const employerColumn = firstColumn(columns, ["EMPLOYER_NAME", "EMPLOYER_BUSINESS_NAME", "EMP_BUSINESS_NAME"]);
+  const records = [];
+  for (let rowIndex = headerRow + 1; rowIndex <= range.e.r; rowIndex += 1) {
+    const decisionDate = toDate(cellValue(sheet, rowIndex, decisionColumn));
+    if (decisionDate) records.push({ decisionDate, status: String(cellValue(sheet, rowIndex, statusColumn) || "").toUpperCase(), employer: String(cellValue(sheet, rowIndex, employerColumn) || "") });
+  }
+  return records;
 }
+
+function denseRange(sheet) {
+  const rowCount = Array.isArray(sheet) ? sheet.length : 0;
+  const columnCount = Array.isArray(sheet) ? sheet.reduce((maximum, row) => Math.max(maximum, Array.isArray(row) ? row.length : 0), 0) : 0;
+  return { s: { r: 0, c: 0 }, e: { r: Math.max(0, rowCount - 1), c: Math.max(0, columnCount - 1) } };
+}
+
+function cellValue(sheet, rowIndex, columnIndex) {
+  if (columnIndex === undefined) return "";
+  const cell = Array.isArray(sheet) ? sheet[rowIndex]?.[columnIndex] : sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })];
+  return cell?.v;
+}
+
+function normalizeHeader(value) { return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "_"); }
+function firstColumn(columns, names) { return names.map((name) => columns[name]).find((value) => value !== undefined); }
 
 function toDate(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
