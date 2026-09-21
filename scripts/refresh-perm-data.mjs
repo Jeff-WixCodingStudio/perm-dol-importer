@@ -4,14 +4,20 @@ import * as XLSX from "xlsx";
 const PERFORMANCE_PAGE = "https://www.dol.gov/agencies/eta/foreign-labor/performance";
 const OUTPUT_PATH = new URL("../public/perm-dashboard.json", import.meta.url);
 const MAX_WORKBOOK_BYTES = 200 * 1024 * 1024;
+const DOL_HEADERS = {
+  // DOL rejects the generic Node fetch signature used by hosted CI runners.
+  "user-agent": "PERM-Dashboard-Importer/1.0 (public data dashboard)",
+  "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+  "referer": "https://www.dol.gov/"
+};
 
-const landing = await fetch(PERFORMANCE_PAGE);
+const landing = await fetch(PERFORMANCE_PAGE, { headers: DOL_HEADERS });
 if (!landing.ok) throw new Error(`DOL performance index failed (${landing.status}).`);
 
 const workbookUrl = newestDisclosureUrl(await landing.text());
 if (!workbookUrl) throw new Error("No PERM disclosure workbook was found on the DOL performance page.");
 
-const workbookResponse = await fetch(workbookUrl);
+const workbookResponse = await fetch(workbookUrl, { headers: DOL_HEADERS });
 if (!workbookResponse.ok) throw new Error(`DOL workbook download failed (${workbookResponse.status}).`);
 const size = Number(workbookResponse.headers.get("content-length") || 0);
 if (size && size > MAX_WORKBOOK_BYTES) throw new Error("The DOL workbook exceeded the importer's configured size limit.");
