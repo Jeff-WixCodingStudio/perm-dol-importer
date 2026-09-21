@@ -14,8 +14,8 @@ const workbookResponse = await fetch(workbookUrl, { headers: DOL_HEADERS });
 if (!workbookResponse.ok) throw new Error("DOL workbook download failed (" + workbookResponse.status + ").");
 const size = Number(workbookResponse.headers.get("content-length") || 0);
 if (size && size > MAX_WORKBOOK_BYTES) throw new Error("The DOL workbook exceeded the importer's configured size limit.");
-const workbook = XLSX.read(Buffer.from(await workbookResponse.arrayBuffer()), { type: "buffer", cellDates: true });
-console.log("Workbook diagnostics", JSON.stringify(workbook.SheetNames.map((sheetName) => { const sheet = workbook.Sheets[sheetName]; return { sheetName, ref: sheet?.["!ref"], firstRow: sheet ? Array.from({ length: 12 }, (_, columnIndex) => sheet[XLSX.utils.encode_cell({ r: 0, c: columnIndex })]?.v ?? null) : null }; })));
+const workbook = XLSX.read(Buffer.from(await workbookResponse.arrayBuffer()), { type: "buffer", cellDates: true, dense: true });
+console.log("Workbook diagnostics", JSON.stringify(workbook.SheetNames.map((sheetName) => { const sheet = workbook.Sheets[sheetName]; return { sheetName, ref: sheet?.["!ref"], firstRow: sheet ? Array.from({ length: 12 }, (_, columnIndex) => cellValue(sheet, 0, columnIndex) || null) : null }; })));
 const records = workbook.SheetNames.flatMap((sheetName) => readRecords(workbook.Sheets[sheetName]));
 if (!records.length) throw new Error("The DOL workbook did not have decision rows with a usable DECISION_DATE column.");
 const certified = records.filter((record) => /CERTIFIED|CERTIFICATION/.test(record.status));
@@ -30,7 +30,7 @@ function newestDisclosureUrl(html) {
 function fiscalYear(url) { return Number(String(url).match(/FY(20[0-9]{2})/i)?.[1] || 0); }
 function normalizeHeader(value) { return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "_"); }
 function firstColumn(columns, names) { return names.map((name) => columns[name]).find((value) => value !== undefined); }
-function cellValue(sheet, rowIndex, columnIndex) { return columnIndex === undefined ? "" : sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })]?.v; }
+function cellValue(sheet, rowIndex, columnIndex) { if (columnIndex === undefined) return ""; const cell = Array.isArray(sheet) ? sheet[rowIndex]?.[columnIndex] : sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })]; return cell?.v; }
 function readRecords(sheet) {
   if (!sheet) return [];
   const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
@@ -40,7 +40,7 @@ function readRecords(sheet) {
   for (let rowIndex = range.s.r; rowIndex <= lastHeaderRow; rowIndex += 1) {
     const candidate = {};
     for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
-      const header = normalizeHeader(sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })]?.v);
+      const header = normalizeHeader(cellValue(sheet, rowIndex, columnIndex));
       if (header) candidate[header] = columnIndex;
     }
     if (firstColumn(candidate, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE", "DETERMINATION_DATE", "CASE_DETERMINATION_DATE", "FINAL_DECISION_DATE"]) !== undefined) { headerRow = rowIndex; columns = candidate; break; }
