@@ -34,17 +34,27 @@ function cellValue(sheet, rowIndex, columnIndex) { return columnIndex === undefi
 function readRecords(sheet) {
   if (!sheet) return [];
   const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
-  const columns = {};
-  for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
-    const header = normalizeHeader(sheet[XLSX.utils.encode_cell({ r: range.s.r, c: columnIndex })]?.v);
-    if (header) columns[header] = columnIndex;
+  let headerRow = -1;
+  let columns = {};
+  const lastHeaderRow = Math.min(range.e.r, range.s.r + 20);
+  for (let rowIndex = range.s.r; rowIndex <= lastHeaderRow; rowIndex += 1) {
+    const candidate = {};
+    for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
+      const header = normalizeHeader(sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })]?.v);
+      if (header) candidate[header] = columnIndex;
+    }
+    if (firstColumn(candidate, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE", "DETERMINATION_DATE", "CASE_DETERMINATION_DATE", "FINAL_DECISION_DATE"]) !== undefined) {
+      headerRow = rowIndex;
+      columns = candidate;
+      break;
+    }
   }
+  if (headerRow < 0) return [];
   const decisionColumn = firstColumn(columns, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE", "DETERMINATION_DATE", "CASE_DETERMINATION_DATE", "FINAL_DECISION_DATE"]);
   const statusColumn = firstColumn(columns, ["CASE_STATUS", "STATUS", "FINAL_DECISION"]);
   const employerColumn = firstColumn(columns, ["EMPLOYER_NAME", "EMPLOYER_BUSINESS_NAME", "EMP_BUSINESS_NAME"]);
-  if (decisionColumn === undefined) return [];
   const records = [];
-  for (let rowIndex = range.s.r + 1; rowIndex <= range.e.r; rowIndex += 1) {
+  for (let rowIndex = headerRow + 1; rowIndex <= range.e.r; rowIndex += 1) {
     const decisionDate = toDate(cellValue(sheet, rowIndex, decisionColumn));
     if (decisionDate) records.push({ decisionDate, status: String(cellValue(sheet, rowIndex, statusColumn) || "").toUpperCase(), employer: String(cellValue(sheet, rowIndex, employerColumn) || "") });
   }
