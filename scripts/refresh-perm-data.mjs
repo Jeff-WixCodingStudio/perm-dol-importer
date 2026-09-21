@@ -40,7 +40,7 @@ const records = workbook.SheetNames.flatMap((sheetName) =>
         "FINAL_DECISION_DATE"
       ])),
       status: String(column(row, ["CASE_STATUS", "STATUS", "FINAL_DECISION"]) || "").toUpperCase(),
-      employer: String(column(row, ["EMPLOYER_NAME", "EMPLOYER_BUSINESS_NAME"]) || "")
+      employer: String(column(row, ["EMPLOYER_NAME", "EMPLOYER_BUSINESS_NAME", "EMP_BUSINESS_NAME"]) || "")
     }))
     .filter((record) => record.decisionDate)
 );
