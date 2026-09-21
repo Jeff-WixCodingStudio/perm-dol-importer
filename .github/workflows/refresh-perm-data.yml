@@ -1,0 +1,32 @@
+name: Refresh PERM disclosure charts
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly refresh. The DOL disclosure archive itself is released quarterly.
+    - cron: "0 16 * * 1"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install --no-audit --no-fund
+      - run: npm run refresh
+
+      - name: Commit refreshed dashboard data
+        run: |
+          git config user.name "perm-data-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/perm-dashboard.json
+          git diff --cached --quiet || git commit -m "Refresh PERM dashboard data"
+          git push
