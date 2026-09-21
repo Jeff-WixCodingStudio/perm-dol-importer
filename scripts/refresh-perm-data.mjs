@@ -1,3 +1,4 @@
+
 import { mkdir, writeFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
 
@@ -30,14 +31,25 @@ const workbook = XLSX.read(Buffer.from(await workbookResponse.arrayBuffer()), {
 const records = workbook.SheetNames.flatMap((sheetName) =>
   XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: true })
     .map((row) => ({
-      decisionDate: toDate(column(row, ["DECISION_DATE", "DATE_OF_DECISION", "CASE_DECISION_DATE"])),
+      decisionDate: toDate(column(row, [
+        "DECISION_DATE",
+        "DATE_OF_DECISION",
+        "CASE_DECISION_DATE",
+        "DETERMINATION_DATE",
+        "CASE_DETERMINATION_DATE",
+        "FINAL_DECISION_DATE"
+      ])),
       status: String(column(row, ["CASE_STATUS", "STATUS", "FINAL_DECISION"]) || "").toUpperCase(),
       employer: String(column(row, ["EMPLOYER_NAME", "EMPLOYER_BUSINESS_NAME"]) || "")
     }))
     .filter((record) => record.decisionDate)
 );
 
-if (!records.length) throw new Error("The DOL workbook did not have decision rows in the expected columns.");
+if (!records.length) {
+  const sampleSheet = workbook.Sheets[workbook.SheetNames[0]];
+  const sampleRow = XLSX.utils.sheet_to_json(sampleSheet, { defval: "", raw: true, range: 0, header: 1 })[1] || [];
+  throw new Error(`The DOL workbook did not have decision rows. First sheet columns: ${sampleRow.join(" | ")}`);
+}
 
 const certified = records.filter((record) => /CERTIFIED|CERTIFICATION/.test(record.status));
 const payload = {
