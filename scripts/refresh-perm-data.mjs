@@ -29,7 +29,7 @@ const workbook = XLSX.read(Buffer.from(await workbookResponse.arrayBuffer()), {
 });
 
 const records = workbook.SheetNames.flatMap((sheetName) =>
-  XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: true })
+  XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "", raw: false })
     .map((row) => ({
       decisionDate: toDate(column(row, [
         "DECISION_DATE",
@@ -47,7 +47,7 @@ const records = workbook.SheetNames.flatMap((sheetName) =>
 
 if (!records.length) {
   const sampleSheet = workbook.Sheets[workbook.SheetNames[0]];
-  const sampleRow = XLSX.utils.sheet_to_json(sampleSheet, { defval: "", raw: true, range: 0, header: 1 })[1] || [];
+  const sampleRow = XLSX.utils.sheet_to_json(sampleSheet, { defval: "", raw: true, range: 0, header: 1 })[0] || [];
   throw new Error(`The DOL workbook did not have decision rows. First sheet columns: ${sampleRow.join(" | ")}`);
 }
 
