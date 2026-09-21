@@ -1,3 +1,4 @@
+
 import { mkdir, writeFile } from "node:fs/promises";
 import * as XLSX from "xlsx";
 
@@ -31,6 +32,7 @@ function normalizeHeader(value) { return String(value || "").toUpperCase().repla
 function firstColumn(columns, names) { return names.map((name) => columns[name]).find((value) => value !== undefined); }
 function cellValue(sheet, rowIndex, columnIndex) { return columnIndex === undefined ? "" : sheet[XLSX.utils.encode_cell({ r: rowIndex, c: columnIndex })]?.v; }
 function readRecords(sheet) {
+  if (!sheet) return [];
   const range = XLSX.utils.decode_range(sheet["!ref"] || "A1:A1");
   const columns = {};
   for (let columnIndex = range.s.c; columnIndex <= range.e.c; columnIndex += 1) {
@@ -71,4 +73,3 @@ function weekKey(date) { return dayKey(addDays(date, -((date.getDay() + 6) % 7))
 function monthKey(date) { return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0"); }
 function formatShortDate(date) { return date.toLocaleDateString("en-US", { month: "short", day: "numeric" }); }
 function employerLetter(value) { const letter = String(value || "").trim().charAt(0).toUpperCase(); return /[A-Z]/.test(letter) ? letter : "X"; }
-
